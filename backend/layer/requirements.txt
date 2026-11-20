@@ -1,0 +1,4 @@
+PyMySQL==1.1.1
+PyJWT==2.10.1
+# Needed by PyMySQL for MySQL 8's default login method (caching_sha2_password).
+cryptography==44.0.0

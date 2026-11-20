@@ -1,0 +1,19 @@
+# Secrets
+*.env
+!*.env.example
+.env
+
+backend/sql/local/
+credentials
+credentials.txt
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Build output
+backend/build/
