@@ -44,7 +44,19 @@ Run as the RDS master user (MySQL Workbench or the `mysql` CLI):
 
 The master user is **never** given to the Lambdas.
 
-## 3. Deploy
+## 3. Shopping cart
+
+The cart Lambda uses the existing DynamoDB table `t_shopping_cart`; it does not
+create or migrate the table. Confirm it has a numeric partition key `user_id`, a
+numeric sort key `product_id`, numeric `quantity`, and numeric `expiration` with
+TTL enabled on `expiration`. Set `CART_TABLE_NAME` in `backend/deploy.env` if the
+table has a different name.
+
+The Lambda execution role must be allowed `dynamodb:Query`, `dynamodb:GetItem`,
+`dynamodb:UpdateItem`, and `dynamodb:DeleteItem` on this table. The Lambda subnets
+also need the DynamoDB gateway endpoint described in Network.
+
+## 4. Deploy
 
 1. In the Learner Lab, open **AWS Details**, copy the credentials into
    `%USERPROFILE%\.aws\credentials` under `[default]`. They change every time
@@ -66,7 +78,7 @@ The master user is **never** given to the Lambdas.
 
    The script prints the API URL at the end.
 
-## 4. Quick test
+## 5. Quick test
 
 ```powershell
 $api = "https://xxxx.execute-api.us-east-1.amazonaws.com"

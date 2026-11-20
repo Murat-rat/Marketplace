@@ -1,6 +1,6 @@
 """The main screen after signing in: top bar, category tree and catalog pages."""
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QPushButton, QStackedWidget, QTreeWidget, QTreeWidgetItem,
     QVBoxLayout, QWidget,
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from api_client import ApiClient, ApiError
 from session import User
 from ui.image_loader import ImageLoader
+from ui.views.cart_page import CartPage
 from ui.views.product_detail import ProductDetailPage
 from ui.views.product_list import ProductListPage
 from ui.workers import run_in_background
@@ -53,6 +54,16 @@ class ShellView(QWidget):
         self.badge = QLabel()
         self.badge.setObjectName("Badge")
         bar.addWidget(self.badge)
+        self.cart_button = QPushButton("Cart (0)")
+        self.cart_button.setObjectName("Secondary")
+        self.cart_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cart_button.clicked.connect(self._open_cart)
+        bar.addWidget(self.cart_button)
+        self.cart_feedback = QLabel()
+        self.cart_feedback.setObjectName("Muted")
+        self.cart_feedback.hide()
+        bar.addWidget(self.cart_feedback)
+        self._cart_quantity = 0
         self.user_label = QLabel()
         self.user_label.setObjectName("Muted")
         bar.addWidget(self.user_label)
@@ -88,15 +99,22 @@ class ShellView(QWidget):
         self.pages = QStackedWidget()
         self.list_page = ProductListPage(api, self.images)
         self.detail_page = ProductDetailPage(api, self.images)
+        self.cart_page = CartPage(api)
         self.pages.addWidget(self.list_page)
         self.pages.addWidget(self.detail_page)
+        self.pages.addWidget(self.cart_page)
         body.addWidget(self.pages, 1)
         outer.addLayout(body, 1)
 
         self.list_page.product_selected.connect(self._open_product)
+        self.list_page.add_to_cart.connect(self._add_to_cart)
         self.detail_page.back_requested.connect(lambda: self.pages.setCurrentWidget(self.list_page))
+        self.detail_page.add_to_cart.connect(self._add_to_cart)
+        self.cart_page.continue_shopping.connect(lambda: self.pages.setCurrentWidget(self.list_page))
+        self.cart_page.cart_loaded.connect(self._cart_loaded)
         self.list_page.session_expired.connect(self.session_expired.emit)
         self.detail_page.session_expired.connect(self.session_expired.emit)
+        self.cart_page.session_expired.connect(self.session_expired.emit)
 
     # ------------------------------------------------------------ public
 
@@ -105,8 +123,48 @@ class ShellView(QWidget):
         self.user_label.setText(user.email)
         self.search.clear()
         self.pages.setCurrentWidget(self.list_page)
+        self.cart_page.reset()
+        self._cart_quantity = 0
+        self.cart_button.setText("Cart (0)")
         self._load_categories()
         self.list_page.show_results(query="", category_id=None, category_name=ALL_PRODUCTS)
+        run_in_background(self.api.get_cart, self._cart_loaded, self._cart_load_failed)
+
+    def _cart_loaded(self, data: dict) -> None:
+        self._cart_quantity = int(data["total_quantity"])
+        self.cart_button.setText(f"Cart ({self._cart_quantity})")
+
+    def _cart_load_failed(self, err: ApiError) -> None:
+        if err.session_expired:
+            self.session_expired.emit()
+
+    def _open_cart(self) -> None:
+        self.pages.setCurrentWidget(self.cart_page)
+        self.cart_page.load()
+
+    def _add_to_cart(self, product_id: int) -> None:
+        self.cart_feedback.setText("Adding…")
+        self.cart_feedback.show()
+        run_in_background(
+            lambda: self.api.add_to_cart(product_id),
+            self._cart_add_succeeded,
+            self._cart_add_failed,
+        )
+
+    def _cart_add_succeeded(self, _result: dict) -> None:
+        self._cart_quantity += 1
+        self.cart_button.setText(f"Cart ({self._cart_quantity})")
+        self.cart_feedback.setText("Added 1 to cart")
+        QTimer.singleShot(3000, self.cart_feedback.hide)
+        if self.pages.currentWidget() is self.cart_page:
+            self.cart_page.load()
+
+    def _cart_add_failed(self, err: ApiError) -> None:
+        if err.session_expired:
+            self.session_expired.emit()
+            return
+        self.cart_feedback.setText(err.message)
+        QTimer.singleShot(5000, self.cart_feedback.hide)
 
     # ------------------------------------------------------------ categories
 

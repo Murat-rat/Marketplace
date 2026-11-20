@@ -25,6 +25,7 @@ SORTS = [
 
 class ProductCard(QFrame):
     clicked = Signal(int)
+    add_to_cart = Signal(int)
 
     def __init__(self, product: dict, images: ImageLoader, parent=None):
         super().__init__(parent)
@@ -68,6 +69,12 @@ class ProductCard(QFrame):
         stock.setObjectName("Available" if product["available"] else "OutOfStock")
         layout.addWidget(stock)
 
+        self.add_button = QPushButton("Add to cart")
+        self.add_button.setObjectName("Secondary")
+        self.add_button.setEnabled(bool(product["available"]))
+        self.add_button.clicked.connect(lambda: self.add_to_cart.emit(self.product_id))
+        layout.addWidget(self.add_button)
+
         # Names are written by sellers: always plain text, never interpreted as HTML.
         name.setTextFormat(Qt.TextFormat.PlainText)
         store.setTextFormat(Qt.TextFormat.PlainText)
@@ -84,6 +91,7 @@ class ProductCard(QFrame):
 
 class ProductListPage(QWidget):
     product_selected = Signal(int)
+    add_to_cart = Signal(int)
     session_expired = Signal()
 
     def __init__(self, api: ApiClient, images: ImageLoader, parent=None):
@@ -261,6 +269,7 @@ class ProductListPage(QWidget):
             for product in self._items:
                 card = ProductCard(product, self.images)
                 card.clicked.connect(self.product_selected.emit)
+                card.add_to_cart.connect(self.add_to_cart.emit)
                 self._cards.append(card)
         while self.grid.count():
             self.grid.takeAt(0)
