@@ -19,7 +19,18 @@ desktop/ (PySide6)  --HTTPS + JWT-->  API Gateway HTTP API  -->  Lambdas (Python
   Use the real ENUM values from the schema files; do not invent new ones.
 - A "seller" is a user with `role = 'buyer'` plus an active row in `sellers` (role is only `buyer`/`admin`).
 - Stock is set by the seller; availability is always `stock > 0` (never a flag).
-  Purchases decrement stock atomically (`UPDATE ... SET stock = stock - %s WHERE id = %s AND stock >= %s`).
+- **Orders, stock changes from purchases, and shipments go through the stored procedures**
+  in `backend/sql/migrations/002_stored_procedures.sql` — never direct INSERT/UPDATE:
+  - `sp_place_order(user_id, address_id, items_json, @order_id, @total)`: checkout. Creates a
+    `pending` order, reserves stock, one shipment per seller. After the mock payment is approved
+    the checkout Lambda sets `orders.status='paid'` and `order_items.status='confirmed'`
+    (`WHERE status='pending'`); if rejected it calls `sp_cancel_order`.
+  - `sp_cancel_order(order_id, user_id, @was_paid)`: buyer cancel / rejected payment; restores stock.
+    If `@was_paid` is 1, mark the payment `refunded` in RDS #2.
+  - `sp_update_shipment_status(seller_id, shipment_id, status, carrier, tracking, @order_status)`: seller fulfilment.
+  - Errors come as MySQL error 1644 with a code in the message (`OUT_OF_STOCK`, `ORDER_NOT_FOUND`, ...);
+    map them to 400/404/409 in the handler. Call them outside any other open transaction.
+  - Lambda MySQL users have only EXECUTE on these, not direct write rights on those tables.
 - A user may review a product once (and edit it) only after a **delivered** order containing it.
 
 ## Where things live

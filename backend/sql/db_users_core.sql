@@ -45,12 +45,13 @@ CREATE USER IF NOT EXISTS 'app_account'@'%' IDENTIFIED BY 'CHANGE_ME';
 GRANT SELECT, INSERT, UPDATE, DELETE ON marketplace_core.addresses TO 'app_account'@'%';
 
 -- ---------- checkout: create orders, decrement stock ----------
+-- Orders and stock are written only by sp_place_order / sp_cancel_order
+-- (EXECUTE is granted in migrations/002_stored_procedures.sql).
 CREATE USER IF NOT EXISTS 'app_checkout'@'%' IDENTIFIED BY 'CHANGE_ME';
 GRANT SELECT ON marketplace_core.addresses TO 'app_checkout'@'%';
 GRANT SELECT ON marketplace_core.products  TO 'app_checkout'@'%';
-GRANT UPDATE (stock) ON marketplace_core.products TO 'app_checkout'@'%';
-GRANT SELECT, INSERT ON marketplace_core.orders      TO 'app_checkout'@'%';
-GRANT SELECT, INSERT ON marketplace_core.order_items TO 'app_checkout'@'%';
+GRANT SELECT, UPDATE (status) ON marketplace_core.orders      TO 'app_checkout'@'%';
+GRANT SELECT, UPDATE (status) ON marketplace_core.order_items TO 'app_checkout'@'%';
 
 -- ---------- orders: shopper's order history (read-only) ----------
 CREATE USER IF NOT EXISTS 'app_orders'@'%' IDENTIFIED BY 'CHANGE_ME';
@@ -66,10 +67,10 @@ GRANT SELECT, UPDATE ON marketplace_core.sellers          TO 'app_seller'@'%';
 GRANT SELECT          ON marketplace_core.categories       TO 'app_seller'@'%';
 GRANT SELECT, INSERT, UPDATE ON marketplace_core.products  TO 'app_seller'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON marketplace_core.product_images TO 'app_seller'@'%';
-GRANT SELECT ON marketplace_core.orders                    TO 'app_seller'@'%';
-GRANT UPDATE (status) ON marketplace_core.orders           TO 'app_seller'@'%';
-GRANT SELECT ON marketplace_core.order_items               TO 'app_seller'@'%';
-GRANT UPDATE (shipment_id) ON marketplace_core.order_items TO 'app_seller'@'%';
-GRANT SELECT, INSERT, UPDATE ON marketplace_core.shipments TO 'app_seller'@'%';
+-- Fulfilment (shipments, item and order status) only through
+-- sp_update_shipment_status (EXECUTE granted in migration 002).
+GRANT SELECT ON marketplace_core.orders      TO 'app_seller'@'%';
+GRANT SELECT ON marketplace_core.order_items TO 'app_seller'@'%';
+GRANT SELECT ON marketplace_core.shipments   TO 'app_seller'@'%';
 
 FLUSH PRIVILEGES;
