@@ -201,6 +201,9 @@ def product(pid, name, available=True):
             "seller": {"id": 1, "store_name": "Demo Store"}, "image_url": None}
 
 
+EMPTY_CART = {"items": [], "subtotal": "0.00", "total_quantity": 0, "item_count": 0, "max_items": 50}
+
+
 def catalog_router(expired=False):
     def route(method, url, params):
         if expired:
@@ -210,6 +213,8 @@ def catalog_router(expired=False):
         if url.endswith("/products"):
             items = [product(i, f"Item {i}", available=i % 2 == 0) for i in range(1, 6)]
             return FakeResponse(200, {"items": items, "page": params["page"], "page_size": 20, "total": 45, "pages": 3})
+        if url.endswith("/cart"):
+            return FakeResponse(200, EMPTY_CART)
         if "/products/" in url:
             return FakeResponse(200, {**product(4, "<b>Item 4</b>"), "description": "Nice", "published_at": None,
                                       "category_path": [{"id": 1, "name": "Electronics"}, {"id": 2, "name": "Phones"}],
@@ -302,3 +307,90 @@ def test_image_download_never_sends_token(monkeypatch):
     assert seen["auth"] is None
     with pytest.raises(ApiError):
         api.download_image("http://insecure.example.com/x.png")
+
+
+# ---------- cart screens ----------
+
+CART = {
+    "items": [
+        {"product_id": 4, "name": "<i>Item 4</i>", "unit_price": "99.50", "quantity": 3, "stock": 3,
+         "max_quantity": 3, "available": True, "line_total": "298.50"},
+        {"product_id": 5, "name": "Gone", "unit_price": "10.00", "quantity": 1, "stock": 0,
+         "max_quantity": 0, "available": False, "line_total": "10.00"},
+    ],
+    "subtotal": "298.50", "total_quantity": 4, "item_count": 2, "max_items": 50,
+}
+
+
+def cart_router(add_status=200):
+    base = catalog_router()
+
+    def route(method, url, params):
+        if url.endswith("/cart"):
+            return FakeResponse(200, CART)
+        if url.endswith("/cart/items"):
+            if add_status != 200:
+                return FakeResponse(add_status, {"error": "conflict",
+                                                 "message": "Your cart can hold up to 50 different products"})
+            return FakeResponse(200, {"product_id": 4, "quantity": 1})
+        if "/cart/items/" in url:
+            return FakeResponse(200, {"product_id": 4, "quantity": 2})
+        return base(method, url, params)
+    return route
+
+
+def test_add_to_cart_updates_counter_and_sends_only_the_id(qapp, monkeypatch):
+    win, sent = signed_in_window(qapp, monkeypatch, cart_router())
+    shell = win.home
+    assert shell.cart_button.text() == "Cart (4)"
+    shell.list_page._cards[3].add_button.click()
+    wait_for_tasks(qapp)
+    request = next(r for r in sent if r["url"].endswith("/cart/items"))
+    assert request["method"] == "POST" and request["json"] == {"product_id": 4}
+    assert shell.cart_button.text() == "Cart (5)"
+
+
+def test_cart_page_rows_limits_and_safe_text(qapp, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel, QPushButton
+    win, sent = signed_in_window(qapp, monkeypatch, cart_router())
+    shell = win.home
+    shell._open_cart()
+    wait_for_tasks(qapp)
+    page = shell.cart_page
+    assert shell.pages.currentWidget() is page
+    assert "Subtotal" in page.summary.text() and "298.50" in page.summary.text()
+    labels = page.rows_host.findChildren(QLabel)
+    name = next(label for label in labels if label.text() == "<i>Item 4</i>")
+    assert name.textFormat() == Qt.TextFormat.PlainText  # seller text is never HTML
+    plus_buttons = [b for b in page.rows_host.findChildren(QPushButton) if b.text() == "+"]
+    assert plus_buttons and not any(b.isEnabled() for b in plus_buttons)  # at the limit / unavailable
+
+    minus = next(b for b in page.rows_host.findChildren(QPushButton) if b.text() == "−")
+    minus.click()
+    wait_for_tasks(qapp)
+    patch = next(r for r in sent if r["method"] == "PATCH")
+    assert patch["url"].endswith("/cart/items/4") and patch["json"] == {"quantity": 2}
+
+
+def test_add_to_cart_error_is_shown(qapp, monkeypatch):
+    win, _ = signed_in_window(qapp, monkeypatch, cart_router(add_status=409))
+    shell = win.home
+    assert not shell.list_page._cards[0].add_button.isEnabled()  # out of stock: cannot even try
+    shell.list_page._cards[1].add_button.click()
+    wait_for_tasks(qapp)
+    assert "50 different products" in shell.cart_feedback.text()
+    assert shell.cart_button.text() == "Cart (4)"  # unchanged
+
+
+def test_local_demo_never_uses_the_network(monkeypatch):
+    from local_demo_api import LocalDemoApi
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("the local demo must not make HTTP requests")
+
+    monkeypatch.setattr(requests.Session, "request", no_network)
+    demo = LocalDemoApi(Session())
+    demo.login("ana@test.com", "anything")
+    demo.add_to_cart(1)
+    assert demo.get_cart()["total_quantity"] == 1

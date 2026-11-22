@@ -39,7 +39,7 @@ Run as the RDS master user (MySQL Workbench or the `mysql` CLI):
    into `backend/sql/local/` (git-ignored) and replace every `CHANGE_ME` there with
    a strong, unique password. **Never put real passwords in the tracked copies.**
 2. Run the core one on **RDS #1** and the sensitive one on **RDS #2**.
-3. Run the files in `backend/sql/migrations/` in order (001 on RDS #2, 002 on RDS #1), then
+3. Run the files in `backend/sql/migrations/` in order (001 on RDS #2; 002 and 003 on RDS #1), then
    `backend/sql/seed/seed_catalog.sql` on RDS #1. Check the stored procedures with
    `backend/sql/tests/test_stored_procedures.sql` (every row must show `passed = 1`).
 4. Copy the passwords you chose into `backend/deploy.env`.

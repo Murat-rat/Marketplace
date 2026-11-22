@@ -3,7 +3,7 @@
 Desktop marketplace app (Python + PySide6) with an AWS backend: API Gateway, Python
 Lambdas, two MySQL RDS databases and DynamoDB.
 
-## Try the desktop app offline
+## Try the desktop app offline (development only)
 
 For a UI demo without AWS or database access, set `LOCAL_DEMO=1` in `desktop/.env`
 and run `python desktop/main.py`. This mode uses sample products and an in-memory

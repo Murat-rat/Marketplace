@@ -8,11 +8,32 @@ from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
 _CART_TTL_SECONDS = 30 * 24 * 60 * 60
+
+# Same limits as sp_place_order (migration 002), so every cart can be checked out.
+MAX_LINES = 50          # different products in one cart
+MAX_QUANTITY = 100      # units of one product
+
 _table = None
+
+# A product can be bought only while the product, its store and its category are
+# active (the same rule the catalog uses). seller_user_id lets the handler stop a
+# seller from putting their own products in the cart.
+_PRODUCT_COLUMNS = """
+    SELECT p.id, p.name, p.price, p.stock,
+           (p.is_active AND s.is_active AND c.is_active) AS is_active,
+           s.user_id AS seller_user_id
+      FROM products p
+      JOIN sellers s    ON s.id = p.seller_id
+      JOIN categories c ON c.id = p.category_id
+"""
 
 
 class CartLimitReached(Exception):
-    """The cart quantity reached current product stock."""
+    """The quantity would go over the stock or MAX_QUANTITY."""
+
+
+class CartFull(Exception):
+    """The cart already holds MAX_LINES different products."""
 
 
 class CartItemNotFound(Exception):
@@ -20,25 +41,18 @@ class CartItemNotFound(Exception):
 
 
 def get_product(cur, product_id: int) -> dict | None:
-    cur.execute(
-        "SELECT id, name, price, stock, is_active FROM products WHERE id = %s",
-        (product_id,),
-    )
+    cur.execute(_PRODUCT_COLUMNS + " WHERE p.id = %s", (product_id,))
     return cur.fetchone()
 
 
 def get_products(cur, product_ids: list[int]) -> dict[int, dict]:
-    products = {}
-    # Keep the IN list bounded even if a user has accumulated a very large cart.
-    for start in range(0, len(product_ids), 200):
-        batch = product_ids[start:start + 200]
-        placeholders = ", ".join(["%s"] * len(batch))
-        cur.execute(
-            f"SELECT id, name, price, stock, is_active FROM products WHERE id IN ({placeholders})",
-            tuple(batch),
-        )
-        products.update({int(row["id"]): row for row in cur.fetchall()})
-    return products
+    if not product_ids:
+        return {}
+    # The cart holds at most MAX_LINES products, so this is one bounded query.
+    # Only "%s" placeholders are built here; the ids themselves are parameters.
+    placeholders = ", ".join(["%s"] * len(product_ids))
+    cur.execute(_PRODUCT_COLUMNS + f" WHERE p.id IN ({placeholders})", tuple(product_ids))
+    return {int(row["id"]): row for row in cur.fetchall()}
 
 
 def _cart_table():
@@ -49,6 +63,10 @@ def _cart_table():
     return _table
 
 
+def _is_conditional_failure(err: ClientError) -> bool:
+    return err.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException"
+
+
 def _delete_if_expired(user_id: int, product_id: int, now: int) -> None:
     """Remove a stale row before an add, even if DynamoDB TTL has not run yet."""
     try:
@@ -57,29 +75,59 @@ def _delete_if_expired(user_id: int, product_id: int, now: int) -> None:
             ConditionExpression=Attr("expiration").lte(now),
         )
     except ClientError as err:
-        if err.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+        if not _is_conditional_failure(err):
             raise
 
 
+def _has_live_item(user_id: int, product_id: int, now: int) -> bool:
+    item = _cart_table().get_item(
+        Key={"user_id": user_id, "product_id": product_id}, ConsistentRead=True,
+    ).get("Item")
+    return item is not None and int(item.get("expiration", 0)) > now
+
+
+def count_items(user_id: int) -> int:
+    """Number of different (not expired) products in the cart."""
+    now = int(time.time())
+    args = {
+        "KeyConditionExpression": Key("user_id").eq(user_id),
+        "FilterExpression": Attr("expiration").gt(now),
+        "Select": "COUNT",
+        "ConsistentRead": True,
+    }
+    total = 0
+    while True:
+        result = _cart_table().query(**args)
+        total += result.get("Count", 0)
+        if "LastEvaluatedKey" not in result:
+            return total
+        args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
+
+
 def add_one(user_id: int, product_id: int, stock: int) -> int:
-    """Atomically add exactly one unit, capped at the stock just read from MySQL."""
+    """Atomically add exactly one unit, capped at the stock just read from MySQL
+    and at MAX_QUANTITY. A new product is refused once the cart has MAX_LINES."""
     now = int(time.time())
     _delete_if_expired(user_id, product_id, now)
+    # Two simultaneous adds of *different* new products could both pass this
+    # check and leave 51 lines; sp_place_order still refuses more than 50 at checkout.
+    if not _has_live_item(user_id, product_id, now) and count_items(user_id) >= MAX_LINES:
+        raise CartFull
     try:
         result = _cart_table().update_item(
             Key={"user_id": user_id, "product_id": product_id},
             UpdateExpression="SET #expiration = :expiration ADD #quantity :one",
-            ConditionExpression="attribute_not_exists(#quantity) OR #quantity < :stock",
+            ConditionExpression="attribute_not_exists(#quantity) OR #quantity < :cap",
             ExpressionAttributeNames={"#expiration": "expiration", "#quantity": "quantity"},
             ExpressionAttributeValues={
                 ":expiration": now + _CART_TTL_SECONDS,
                 ":one": 1,
-                ":stock": stock,
+                ":cap": min(stock, MAX_QUANTITY),
             },
             ReturnValues="ALL_NEW",
         )
     except ClientError as err:
-        if err.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+        if _is_conditional_failure(err):
             raise CartLimitReached from None
         raise
     return int(result["Attributes"]["quantity"])
@@ -98,40 +146,33 @@ def list_items(user_id: int) -> list[dict]:
         result = table.query(**query_args)
         items.extend(result.get("Items", []))
         last_key = result.get("LastEvaluatedKey")
-        if not last_key:
+        if not last_key or len(items) >= MAX_LINES:
             break
         query_args["ExclusiveStartKey"] = last_key
-    return items
+    return items[:MAX_LINES]
 
 
 def set_quantity(user_id: int, product_id: int, quantity: int, stock: int) -> None:
-    if quantity == 0:
-        remove_item(user_id, product_id)
-        return
-    if quantity > stock:
+    """Set the quantity of a product that is already (and still) in the cart."""
+    if quantity > min(stock, MAX_QUANTITY):
         raise CartLimitReached
     now = int(time.time())
     try:
         _cart_table().update_item(
             Key={"user_id": user_id, "product_id": product_id},
             UpdateExpression="SET #quantity = :quantity, #expiration = :expiration",
-            ConditionExpression="attribute_exists(#quantity)",
+            # An expired row (TTL not run yet) counts as "not in the cart".
+            ConditionExpression="attribute_exists(#quantity) AND #expiration > :now",
             ExpressionAttributeNames={"#quantity": "quantity", "#expiration": "expiration"},
             ExpressionAttributeValues={
                 ":quantity": quantity,
                 ":expiration": now + _CART_TTL_SECONDS,
+                ":now": now,
             },
         )
     except ClientError as err:
-        code = err.response.get("Error", {}).get("Code")
-        if code == "ConditionalCheckFailedException":
-            response = _cart_table().get_item(
-                Key={"user_id": user_id, "product_id": product_id},
-                ConsistentRead=True,
-            )
-            if "Item" not in response or int(response["Item"].get("expiration", 0)) <= now:
-                raise CartItemNotFound from None
-            raise CartLimitReached from None
+        if _is_conditional_failure(err):
+            raise CartItemNotFound from None
         raise
 
 

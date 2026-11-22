@@ -164,7 +164,8 @@ class CartPage(QWidget):
         plus = QPushButton("+")
         plus.setObjectName("Secondary")
         plus.setToolTip("Add one unit")
-        plus.setEnabled(bool(item["available"] and item["quantity"] < item["stock"]))
+        limit = item.get("max_quantity", item["stock"])  # stock, capped at 100 by the server
+        plus.setEnabled(bool(item["available"] and item["quantity"] < limit))
         plus.clicked.connect(
             lambda _checked=False, pid=item["product_id"], qty=item["quantity"]:
                 self._change_quantity(pid, qty + 1)

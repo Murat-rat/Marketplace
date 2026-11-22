@@ -1,4 +1,11 @@
-"""In-memory API substitute for trying the desktop UI and cart offline."""
+"""DEVELOPMENT ONLY: in-memory API substitute for trying the desktop UI offline.
+
+Enabled with LOCAL_DEMO=1. It accepts any email/password because there is no
+server and no real data: it never contacts the API, AWS or a database, and
+everything disappears when the app closes. It is not a way into real
+accounts; the real login is always checked by the auth Lambda. The window
+title says "Local demo" so this mode cannot be mistaken for the real app.
+"""
 
 from decimal import Decimal
 
