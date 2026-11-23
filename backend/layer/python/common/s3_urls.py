@@ -22,7 +22,9 @@ def _s3():
     global _client
     if _client is None:
         import boto3  # imported lazily: only needed when images exist
-        _client = boto3.client("s3")
+        from botocore.config import Config
+        # SigV4 links, signed for the bucket's region (the Lambda's AWS_REGION).
+        _client = boto3.client("s3", config=Config(signature_version="s3v4"))
     return _client
 
 
