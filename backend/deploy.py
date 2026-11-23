@@ -48,6 +48,18 @@ FUNCTIONS = {
         "memory": 256,
         "timeout": 10,
     },
+    "cart": {
+        "routes": [
+            "GET /cart",
+            "POST /cart/items",
+            "PATCH /cart/items/{product_id}",
+            "DELETE /cart/items/{product_id}",
+        ],
+        "core": "CART",  # read-only product checks; cart rows live in DynamoDB
+        "optional_env": ["CART_TABLE_NAME"],
+        "memory": 256,
+        "timeout": 10,
+    },
 }
 
 # API Gateway throttling: requests per second (rate) and burst, for the whole

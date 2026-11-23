@@ -16,6 +16,7 @@ THUMB = (64, 64)
 
 class ProductDetailPage(QWidget):
     back_requested = Signal()
+    add_to_cart = Signal(int)
     session_expired = Signal()
 
     def __init__(self, api: ApiClient, images: ImageLoader, parent=None):
@@ -87,6 +88,9 @@ class ProductDetailPage(QWidget):
         self.store_description = QLabel()
         self.store_description.setObjectName("Muted")
         self.store_description.setWordWrap(True)
+        self.add_button = QPushButton("Add to cart")
+        self.add_button.setObjectName("Primary")
+        self.add_button.clicked.connect(self._add_current_product)
         about = QLabel("About this product")
         about.setObjectName("FieldLabel")
         self.description = QLabel()
@@ -102,6 +106,7 @@ class ProductDetailPage(QWidget):
         right.addWidget(sold_by)
         right.addWidget(self.store)
         right.addWidget(self.store_description)
+        right.addWidget(self.add_button)
         right.addSpacing(10)
         right.addWidget(about)
         right.addWidget(self.description)
@@ -148,10 +153,15 @@ class ProductDetailPage(QWidget):
         self.store.setText(p["seller"]["store_name"])
         self.store_description.setText(p["seller"]["description"])
         self.store_description.setVisible(bool(p["seller"]["description"]))
+        self.add_button.setEnabled(bool(p["available"]))
         self.description.setText(p["description"] or "The seller has not added a description.")
 
         self._show_images(p["images"])
         self.card.show()
+
+    def _add_current_product(self) -> None:
+        if self.product is not None and self.product["available"]:
+            self.add_to_cart.emit(int(self.product["id"]))
 
     def _on_error(self, request_id: int, err: ApiError) -> None:
         if request_id != self._request_id:

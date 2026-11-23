@@ -112,6 +112,23 @@ class ApiClient:
     def get_product(self, product_id: int) -> dict:
         return self._request("GET", f"/products/{int(product_id)}")
 
+    # ------------------------------------------------------------ cart
+
+    def get_cart(self) -> dict:
+        return self._request("GET", "/cart")
+
+    def add_to_cart(self, product_id: int) -> dict:
+        """Add one unit; repeated calls increase that product's quantity."""
+        return self._request("POST", "/cart/items", {"product_id": int(product_id)})
+
+    def set_cart_quantity(self, product_id: int, quantity: int) -> dict:
+        return self._request(
+            "PATCH", f"/cart/items/{int(product_id)}", {"quantity": int(quantity)}
+        )
+
+    def remove_cart_item(self, product_id: int) -> dict:
+        return self._request("DELETE", f"/cart/items/{int(product_id)}")
+
     def download_image(self, url: str) -> bytes:
         """Fetch an image (HTTPS only, at most 5 MB, must really be an image)."""
         if not url.startswith("https://"):

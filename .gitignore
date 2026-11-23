@@ -17,3 +17,6 @@ __pycache__/
 
 # Build output
 backend/build/
+
+# Personal editor settings
+.vscode/

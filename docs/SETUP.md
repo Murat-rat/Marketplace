@@ -39,14 +39,26 @@ Run as the RDS master user (MySQL Workbench or the `mysql` CLI):
    into `backend/sql/local/` (git-ignored) and replace every `CHANGE_ME` there with
    a strong, unique password. **Never put real passwords in the tracked copies.**
 2. Run the core one on **RDS #1** and the sensitive one on **RDS #2**.
-3. Run the files in `backend/sql/migrations/` in order (001 on RDS #2, 002 on RDS #1), then
+3. Run the files in `backend/sql/migrations/` in order (001 on RDS #2; 002 and 003 on RDS #1), then
    `backend/sql/seed/seed_catalog.sql` on RDS #1. Check the stored procedures with
    `backend/sql/tests/test_stored_procedures.sql` (every row must show `passed = 1`).
 4. Copy the passwords you chose into `backend/deploy.env`.
 
 The master user is **never** given to the Lambdas.
 
-## 3. Deploy
+## 3. Shopping cart
+
+The cart Lambda uses the existing DynamoDB table `t_shopping_cart`; it does not
+create or migrate the table. Confirm it has a numeric partition key `user_id`, a
+numeric sort key `product_id`, numeric `quantity`, and numeric `expiration` with
+TTL enabled on `expiration`. Set `CART_TABLE_NAME` in `backend/deploy.env` if the
+table has a different name.
+
+The Lambda execution role must be allowed `dynamodb:Query`, `dynamodb:GetItem`,
+`dynamodb:UpdateItem`, and `dynamodb:DeleteItem` on this table. The Lambda subnets
+also need the DynamoDB gateway endpoint described in Network.
+
+## 4. Deploy
 
 1. In the Learner Lab, open **AWS Details**, copy the credentials into
    `%USERPROFILE%\.aws\credentials` under `[default]`. They change every time
@@ -68,7 +80,7 @@ The master user is **never** given to the Lambdas.
 
    The script prints the API URL at the end.
 
-## 4. Quick test
+## 5. Quick test
 
 ```powershell
 $api = "https://xxxx.execute-api.us-east-1.amazonaws.com"

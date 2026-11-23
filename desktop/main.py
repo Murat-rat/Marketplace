@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 import config  # noqa: E402
 from api_client import ApiClient  # noqa: E402
+from local_demo_api import LocalDemoApi  # noqa: E402
 from session import Session  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
 from ui.theme import STYLESHEET  # noqa: E402
@@ -25,13 +26,21 @@ def main() -> int:
     app.setStyle("Fusion")  # same look on every Windows version
     app.setStyleSheet(STYLESHEET)
 
-    try:
-        base_url = config.api_url()
-    except RuntimeError as err:
-        QMessageBox.critical(None, "Marketplace - configuration", str(err))
-        return 1
+    session = Session()
+    if config.local_demo_enabled():
+        api = LocalDemoApi(session)
+        title = "Marketplace — Local demo (temporary data)"
+    else:
+        try:
+            base_url = config.api_url()
+        except RuntimeError as err:
+            QMessageBox.critical(None, "Marketplace - configuration", str(err))
+            return 1
+        api = ApiClient(base_url, session)
+        title = "Marketplace"
 
-    window = MainWindow(ApiClient(base_url, Session()))
+    window = MainWindow(api)
+    window.setWindowTitle(title)
     window.show()
     return app.exec()
 

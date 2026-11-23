@@ -32,6 +32,9 @@ GRANT SELECT (id, store_name, description, is_active) ON marketplace_core.seller
 -- ---------- cart: validates products before writing to DynamoDB ----------
 CREATE USER IF NOT EXISTS 'app_cart'@'%' IDENTIFIED BY 'CHANGE_ME';
 GRANT SELECT ON marketplace_core.products TO 'app_cart'@'%';
+-- Only what is needed to know if a product is visible and who sells it.
+GRANT SELECT (id, user_id, is_active) ON marketplace_core.sellers    TO 'app_cart'@'%';
+GRANT SELECT (id, is_active)          ON marketplace_core.categories TO 'app_cart'@'%';
 
 -- ---------- reviews: purchase check + rating fields only ----------
 CREATE USER IF NOT EXISTS 'app_reviews'@'%' IDENTIFIED BY 'CHANGE_ME';

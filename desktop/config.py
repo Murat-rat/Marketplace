@@ -22,6 +22,14 @@ def _load_env_file() -> dict:
     return values
 
 
+def local_demo_enabled() -> bool:
+    """Enable the offline demo without requiring an API URL."""
+    value = os.environ.get("LOCAL_DEMO")
+    if value is None:
+        value = _load_env_file().get("LOCAL_DEMO", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def api_url() -> str:
     url = os.environ.get("API_URL") or _load_env_file().get("API_URL", "")
     url = url.rstrip("/")
