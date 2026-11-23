@@ -18,5 +18,8 @@ __pycache__/
 # Build output
 backend/build/
 
+# Downloaded images: kept out of git (they are in S3, and may be copyrighted)
+backend/images/incoming/
+
 # Personal editor settings
 .vscode/
