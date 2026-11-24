@@ -20,6 +20,7 @@
 -- ---------- auth: register + login ----------
 CREATE USER IF NOT EXISTS 'app_auth'@'%' IDENTIFIED BY 'CHANGE_ME';
 GRANT SELECT, INSERT, DELETE ON marketplace_core.users   TO 'app_auth'@'%';
+GRANT UPDATE (email) ON marketplace_core.users TO 'app_auth'@'%';
 GRANT SELECT, INSERT, DELETE ON marketplace_core.sellers TO 'app_auth'@'%';
 
 -- ---------- catalog: read-only browsing ----------

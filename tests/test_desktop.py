@@ -100,6 +100,11 @@ def test_expired_session_has_no_token():
     assert not s.active and s.token is None
 
 
+def test_wrong_current_password_does_not_look_like_an_expired_session():
+    assert ApiError(401, "current_password_invalid", "Wrong password").session_expired is False
+    assert ApiError(401, "unauthorized", "Expired token").session_expired is True
+
+
 def test_config_refuses_plain_http(monkeypatch):
     monkeypatch.setenv("API_URL", "http://evil.example.com")
     with pytest.raises(RuntimeError):
@@ -394,3 +399,42 @@ def test_local_demo_never_uses_the_network(monkeypatch):
     demo.login("ana@test.com", "anything")
     demo.add_to_cart(1)
     assert demo.get_cart()["total_quantity"] == 1
+
+
+def test_profile_client_calls_authenticated_account_routes(monkeypatch):
+    api, sent = make_client(monkeypatch, [
+        FakeResponse(200, {"email": "new@test.com"}),
+        FakeResponse(200, {"password_changed": True}),
+    ])
+    api.session.start("token-value", 3600, USER)
+    api.change_email("new@test.com")
+    api.change_password("OldPass123", "NewPass123")
+    assert sent[0]["method"] == "PATCH" and sent[0]["url"].endswith("/account/email")
+    assert sent[0]["json"] == {"email": "new@test.com"}
+    assert sent[0]["headers"]["Authorization"] == "Bearer token-value"
+    assert sent[1]["method"] == "PATCH" and sent[1]["url"].endswith("/account/password")
+    assert sent[1]["json"] == {"current_password": "OldPass123", "new_password": "NewPass123"}
+
+
+def test_profile_page_works_in_offline_demo_and_cards_are_preview_only(qapp, monkeypatch):
+    from local_demo_api import LocalDemoApi
+    from ui.views.profile_page import ProfilePage
+
+    demo = LocalDemoApi(Session())
+    demo.login("ana@test.com", "anything")
+    page = ProfilePage(demo)
+    page.load(demo.session.user)
+
+    page.email_input.setText("ana.new@test.com")
+    page._save_email()
+    wait_for_tasks(qapp)
+    assert demo.session.user.email == "ana.new@test.com"
+    assert page.email_input.text() == "ana.new@test.com"
+
+    page.current_password.setText("Anything123")
+    page.new_password.setText("NewSecret123")
+    page.confirm_password.setText("NewSecret123")
+    page._save_password()
+    wait_for_tasks(qapp)
+    assert page.status.text() == "Password updated."
+    assert not page.add_payment.isEnabled()

@@ -5,7 +5,7 @@ and nothing on the PC can be stolen to impersonate them later.
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,10 @@ class Session:
         self._token = None
         self._expires_at = 0.0
         self.user = None
+
+    def update_email(self, email: str) -> None:
+        if self.user is not None:
+            self.user = replace(self.user, email=email)
 
     @property
     def active(self) -> bool:

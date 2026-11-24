@@ -25,6 +25,12 @@ class Unauthorized(AppError):
     code = "unauthorized"
 
 
+class CurrentPasswordInvalid(Unauthorized):
+    """The session is valid, but the supplied current password is not."""
+
+    code = "current_password_invalid"
+
+
 class Forbidden(AppError):
     status = 403
     code = "forbidden"

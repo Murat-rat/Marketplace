@@ -10,6 +10,18 @@ def find_user_by_email(cur, email: str) -> dict | None:
     return cur.fetchone()
 
 
+def find_user_by_id(cur, user_id: int) -> dict | None:
+    cur.execute(
+        "SELECT id, name, email, phone, role, is_active FROM users WHERE id = %s",
+        (user_id,),
+    )
+    return cur.fetchone()
+
+
+def update_user_email(cur, user_id: int, email: str) -> None:
+    cur.execute("UPDATE users SET email = %s WHERE id = %s AND is_active = TRUE", (email, user_id))
+
+
 def insert_user(cur, *, name: str, email: str, phone: str, role: str, created_at) -> int:
     cur.execute(
         "INSERT INTO users (name, email, phone, role, is_active, created_at) "
@@ -77,4 +89,12 @@ def register_successful_login(cur, user_id: int, now) -> None:
     cur.execute(
         "UPDATE credentials SET failed_attempts = 0, locked_until = NULL, last_login = %s WHERE user_id = %s",
         (now, user_id),
+    )
+
+
+def update_password_hash(cur, user_id: int, password_hash: str) -> None:
+    cur.execute(
+        "UPDATE credentials SET password_hash = %s, failed_attempts = 0, locked_until = NULL "
+        "WHERE user_id = %s",
+        (password_hash, user_id),
     )

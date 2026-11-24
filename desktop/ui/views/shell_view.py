@@ -12,6 +12,7 @@ from ui.image_loader import ImageLoader
 from ui.views.cart_page import CartPage
 from ui.views.product_detail import ProductDetailPage
 from ui.views.product_list import ProductListPage
+from ui.views.profile_page import ProfilePage
 from ui.workers import run_in_background
 
 ALL_PRODUCTS = "All products"
@@ -64,8 +65,12 @@ class ShellView(QWidget):
         self.cart_feedback.hide()
         bar.addWidget(self.cart_feedback)
         self._cart_quantity = 0
-        self.user_label = QLabel()
-        self.user_label.setObjectName("Muted")
+        self.user_label = QPushButton()
+        self.user_label.setObjectName("UserMenu")
+        self.user_label.setMaximumWidth(200)
+        self.user_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.user_label.setToolTip("Open your profile and payment methods")
+        self.user_label.clicked.connect(self._open_profile)
         bar.addWidget(self.user_label)
         logout = QPushButton("Log out")
         logout.setObjectName("Secondary")
@@ -100,9 +105,11 @@ class ShellView(QWidget):
         self.list_page = ProductListPage(api, self.images)
         self.detail_page = ProductDetailPage(api, self.images)
         self.cart_page = CartPage(api)
+        self.profile_page = ProfilePage(api)
         self.pages.addWidget(self.list_page)
         self.pages.addWidget(self.detail_page)
         self.pages.addWidget(self.cart_page)
+        self.pages.addWidget(self.profile_page)
         body.addWidget(self.pages, 1)
         outer.addLayout(body, 1)
 
@@ -112,9 +119,12 @@ class ShellView(QWidget):
         self.detail_page.add_to_cart.connect(self._add_to_cart)
         self.cart_page.continue_shopping.connect(lambda: self.pages.setCurrentWidget(self.list_page))
         self.cart_page.cart_loaded.connect(self._cart_loaded)
+        self.profile_page.back_requested.connect(lambda: self.pages.setCurrentWidget(self.list_page))
+        self.profile_page.email_updated.connect(self.user_label.setText)
         self.list_page.session_expired.connect(self.session_expired.emit)
         self.detail_page.session_expired.connect(self.session_expired.emit)
         self.cart_page.session_expired.connect(self.session_expired.emit)
+        self.profile_page.session_expired.connect(self.session_expired.emit)
 
     # ------------------------------------------------------------ public
 
@@ -141,6 +151,13 @@ class ShellView(QWidget):
     def _open_cart(self) -> None:
         self.pages.setCurrentWidget(self.cart_page)
         self.cart_page.load()
+
+    def _open_profile(self) -> None:
+        user = self.api.session.user
+        if user is None:
+            return
+        self.profile_page.load(user)
+        self.pages.setCurrentWidget(self.profile_page)
 
     def _add_to_cart(self, product_id: int) -> None:
         self.cart_feedback.setText("Adding…")

@@ -97,6 +97,15 @@ QPushButton#Link {{
 QPushButton#Link:hover {{
     text-decoration: underline;
 }}
+QPushButton#UserMenu {{
+    background: transparent;
+    border: none;
+    color: {PRIMARY};
+    padding: 5px 2px;
+}}
+QPushButton#UserMenu:hover {{
+    text-decoration: underline;
+}}
 QRadioButton {{
     spacing: 6px;
 }}
@@ -174,5 +183,15 @@ QPushButton#Thumb:hover {{
     border-radius: 10px;
     padding: 3px 10px;
     font-weight: 600;
+}}
+QLabel#PaymentPreviewText {{
+    color: white;
+    font-size: 9pt;
+}}
+QLabel#PaymentPreviewNumber {{
+    color: white;
+    font-size: 13pt;
+    font-weight: 600;
+    letter-spacing: 1px;
 }}
 """

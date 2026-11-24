@@ -35,7 +35,7 @@ API_NAME = f"{PROJECT}-api"
 # A function without "secure" gets NO credentials for RDS #2.
 FUNCTIONS = {
     "auth": {
-        "routes": ["POST /register", "POST /login"],
+        "routes": ["POST /register", "POST /login", "PATCH /account/email", "PATCH /account/password"],
         "core": "AUTH",
         "secure": "AUTH",
         "memory": 256,  # scrypt needs ~16 MB per hash, plus Python
@@ -68,6 +68,7 @@ DEFAULT_THROTTLE = {"ThrottlingRateLimit": 20, "ThrottlingBurstLimit": 40}
 ROUTE_THROTTLE = {
     "POST /login": {"ThrottlingRateLimit": 2, "ThrottlingBurstLimit": 5},
     "POST /register": {"ThrottlingRateLimit": 2, "ThrottlingBurstLimit": 5},
+    "PATCH /account/password": {"ThrottlingRateLimit": 2, "ThrottlingBurstLimit": 5},
 }
 
 

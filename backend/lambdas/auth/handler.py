@@ -9,8 +9,8 @@ import os
 import pymysql
 
 from common import db, passwords, validation
-from common.auth_jwt import issue_token
-from common.errors import Conflict, Unauthorized, ValidationError
+from common.auth_jwt import issue_token, require_auth
+from common.errors import Conflict, CurrentPasswordInvalid, NotFound, Unauthorized, ValidationError
 from common.http import make_handler, parse_body
 
 import repository as repo
@@ -138,7 +138,64 @@ def login(event):
     return 200, _session(user, seller_id)
 
 
+def change_email(event):
+    principal = require_auth(event)
+    body = parse_body(event, {"email"})
+    email = validation.email(body)
+
+    try:
+        with db.transaction(db.CORE) as cur:
+            user = repo.find_user_by_id(cur, principal.user_id)
+            if user is None or not user["is_active"]:
+                raise NotFound("This account is no longer available")
+            existing = repo.find_user_by_email(cur, email)
+            if existing is not None and int(existing["id"]) != principal.user_id:
+                raise Conflict("An account with this email already exists", "email")
+            repo.update_user_email(cur, principal.user_id, email)
+    except pymysql.err.IntegrityError:
+        # The unique constraint remains the final guard against concurrent changes.
+        raise Conflict("An account with this email already exists", "email") from None
+
+    return 200, {"email": email}
+
+
+def change_password(event):
+    principal = require_auth(event)
+    body = parse_body(event, {"current_password", "new_password"})
+    current_password = validation.any_password(body, "current_password")
+    new_password = validation.new_password(body, "new_password")
+    if current_password == new_password:
+        raise ValidationError("Choose a password different from your current password", "new_password")
+
+    # Scrypt is deliberately slow; do it before opening the database transaction.
+    new_hash = passwords.hash_password(new_password)
+    now = _now()
+    valid = False
+    with db.transaction(db.SECURE) as cur:
+        cred = repo.get_credentials(cur, principal.user_id)
+        locked = cred is not None and cred["locked_until"] is not None and cred["locked_until"] > now
+        if cred is None or locked:
+            passwords.burn_time(current_password)
+        elif passwords.verify_password(current_password, cred["password_hash"]):
+            repo.update_password_hash(cur, principal.user_id, new_hash)
+            valid = True
+        else:
+            repo.register_failed_attempt(
+                cur,
+                principal.user_id,
+                max_attempts=MAX_FAILED_ATTEMPTS,
+                lock_until=now + dt.timedelta(minutes=LOCK_MINUTES),
+            )
+
+    if not valid:
+        raise CurrentPasswordInvalid("Current password is incorrect or the account is temporarily locked",
+                                     "current_password")
+    return 200, {"password_changed": True}
+
+
 lambda_handler = make_handler({
     "POST /register": register,
     "POST /login": login,
+    "PATCH /account/email": change_email,
+    "PATCH /account/password": change_password,
 })

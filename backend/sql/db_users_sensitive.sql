@@ -16,6 +16,7 @@
 CREATE USER IF NOT EXISTS 'app_auth_s'@'%' IDENTIFIED BY 'CHANGE_ME';
 GRANT SELECT, INSERT, DELETE ON marketplace_sensitive.credentials TO 'app_auth_s'@'%';
 GRANT UPDATE (failed_attempts, locked_until, last_login) ON marketplace_sensitive.credentials TO 'app_auth_s'@'%';
+GRANT UPDATE (password_hash) ON marketplace_sensitive.credentials TO 'app_auth_s'@'%';
 
 -- ---------- account: saved cards (token + last4 only) ----------
 CREATE USER IF NOT EXISTS 'app_account_s'@'%' IDENTIFIED BY 'CHANGE_ME';

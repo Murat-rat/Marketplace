@@ -76,6 +76,28 @@ class LocalDemoApi:
     def logout(self) -> None:
         self.session.clear()
 
+    def change_email(self, email: str) -> dict:
+        user_id = self._require_session()
+        email = email.strip().lower()
+        existing = self._users_by_email.get(email)
+        if existing is not None and int(existing["id"]) != user_id:
+            raise ApiError(409, "conflict", "An account with this email already exists", "email")
+        current = self.session.user
+        old_email = current.email.lower()
+        user = self._users_by_email.pop(old_email, None)
+        if user is None:
+            user = {"id": user_id, "name": current.name, "role": current.role,
+                    "seller_id": current.seller_id}
+        user["email"] = email
+        self._users_by_email[email] = user
+        return {"email": email}
+
+    def change_password(self, current_password: str, new_password: str) -> dict:
+        # Local demo mode has no real credentials; the form is exercised without
+        # contacting an API or storing a password. The real Lambda verifies scrypt.
+        self._require_session()
+        return {"password_changed": True}
+
     def get_categories(self) -> list[dict]:
         self._require_session()
         return [dict(category) for category in _CATEGORIES]

@@ -129,6 +129,17 @@ class ApiClient:
     def remove_cart_item(self, product_id: int) -> dict:
         return self._request("DELETE", f"/cart/items/{int(product_id)}")
 
+    # ------------------------------------------------------------ account
+
+    def change_email(self, email: str) -> dict:
+        return self._request("PATCH", "/account/email", {"email": email})
+
+    def change_password(self, current_password: str, new_password: str) -> dict:
+        return self._request(
+            "PATCH", "/account/password",
+            {"current_password": current_password, "new_password": new_password},
+        )
+
     def download_image(self, url: str) -> bytes:
         """Fetch an image (HTTPS only, at most 5 MB, must really be an image)."""
         if not url.startswith("https://"):

@@ -88,6 +88,17 @@ def auth(monkeypatch):
     def find_user_by_email(cur, email):
         return next((dict(u) for u in cur.view["users"].values() if u["email"] == email), None)
 
+    def find_user_by_id(cur, user_id):
+        user = cur.view["users"].get(str(user_id))
+        return dict(user) if user else None
+
+    def update_user_email(cur, user_id, email):
+        duplicate = next((u for uid, u in cur.view["users"].items()
+                          if int(uid) != user_id and u["email"] == email), None)
+        if duplicate:
+            raise handler.pymysql.err.IntegrityError(1062, "duplicate email")
+        cur.view["users"][str(user_id)]["email"] = email
+
     def insert_user(cur, *, name, email, phone, role, created_at):
         uid = cur.next_id["users"]
         cur.next_id["users"] += 1
@@ -133,8 +144,15 @@ def auth(monkeypatch):
         c["failed_attempts"] = 0
         c["locked_until"] = None
 
-    for fn in (find_user_by_email, insert_user, insert_seller, find_active_seller_id, insert_credentials,
-               delete_credentials, get_credentials, register_failed_attempt, register_successful_login):
+    def update_password_hash(cur, user_id, password_hash):
+        c = cur.view["credentials"][str(user_id)]
+        c["password_hash"] = password_hash
+        c["failed_attempts"] = 0
+        c["locked_until"] = None
+
+    for fn in (find_user_by_email, find_user_by_id, update_user_email, insert_user, insert_seller,
+               find_active_seller_id, insert_credentials, delete_credentials, get_credentials,
+               register_failed_attempt, register_successful_login, update_password_hash):
         monkeypatch.setattr(repo, fn.__name__, fn)
 
     handler.dbs = dbs
@@ -235,3 +253,41 @@ def test_success_resets_counter(auth):
     call(auth, "POST /login", {"email": "ana@test.com", "password": "Wrong1234"})
     call(auth, "POST /login", {"email": "ana@test.com", "password": "Secreta123"})
     assert auth.dbs["SECURE"].data["credentials"]["1"]["failed_attempts"] == 0
+
+
+def test_change_email_uses_authenticated_user_and_updates_existing_field(auth, monkeypatch):
+    call(auth, "POST /register", SHOPPER)
+    monkeypatch.setattr(auth, "require_auth", lambda _event: type("Principal", (), {"user_id": 1})())
+
+    status, body = call(auth, "PATCH /account/email", {"email": "ANA.NEW@test.com"})
+    assert status == 200 and body["email"] == "ana.new@test.com"
+    assert auth.dbs["CORE"].data["users"]["1"]["email"] == "ana.new@test.com"
+
+
+def test_change_email_rejects_another_users_email(auth, monkeypatch):
+    call(auth, "POST /register", SHOPPER)
+    call(auth, "POST /register", {**SHOPPER, "email": "other@test.com"})
+    monkeypatch.setattr(auth, "require_auth", lambda _event: type("Principal", (), {"user_id": 1})())
+
+    status, _ = call(auth, "PATCH /account/email", {"email": "other@test.com"})
+    assert status == 409
+    assert auth.dbs["CORE"].data["users"]["1"]["email"] == "ana@test.com"
+
+
+def test_change_password_verifies_current_password_and_updates_hash(auth, monkeypatch):
+    call(auth, "POST /register", SHOPPER)
+    monkeypatch.setattr(auth, "require_auth", lambda _event: type("Principal", (), {"user_id": 1})())
+
+    status, body = call(auth, "PATCH /account/password", {
+        "current_password": "Wrong1234", "new_password": "NewSecret123",
+    })
+    assert status == 401 and body["error"] == "current_password_invalid"
+    assert auth.dbs["SECURE"].data["credentials"]["1"]["failed_attempts"] == 1
+
+    status, body = call(auth, "PATCH /account/password", {
+        "current_password": "Secreta123", "new_password": "NewSecret123",
+    })
+    assert status == 200 and body["password_changed"] is True
+    assert "NewSecret123" not in auth.dbs["SECURE"].data["credentials"]["1"]["password_hash"]
+    assert call(auth, "POST /login", {"email": "ana@test.com", "password": "Secreta123"})[0] == 401
+    assert call(auth, "POST /login", {"email": "ana@test.com", "password": "NewSecret123"})[0] == 200
