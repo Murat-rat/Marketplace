@@ -84,6 +84,22 @@ desktop/ (PySide6)  --HTTPS + JWT-->  API Gateway HTTP API  -->  Lambdas (Python
   Only HTTPS URLs. Never send the JWT anywhere except the API.
 - Do not add new dependencies without a good reason; pin exact versions.
 
+## Team workflow
+
+The remaining features are split into four packages in [docs/TEAM_PLAN.md](docs/TEAM_PLAN.md)
+(routes, tables, DB users, screens, required tests). **Build only your package**, exactly as
+specified there; if something in the plan seems wrong, say so in the pull request instead
+of changing another package's area.
+
+- Branch: from an up-to-date `main`; merge `main` again before opening the pull request.
+- Migrations: use only your package's reserved number (A `004`, B `005`, C `006`, D `007`),
+  one file per package.
+- Shared files (`deploy.py`, `api_client.py`, `shell_view.py`, `db_users_*.sql`,
+  `deploy.env.example`): only add your part next to the existing code; never reorganise it.
+- Fill in `.github/pull_request_template.md` (SQL to run, `deploy.env` names, routes).
+- The project owner runs SQL, deploys and merges. Never run AWS commands, `deploy.py`
+  or SQL against the real databases yourself.
+
 ## Code style
 
 - Python 3.12, type hints where helpful, small functions, English names and comments.
