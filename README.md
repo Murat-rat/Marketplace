@@ -10,6 +10,10 @@ and run `python desktop/main.py`. This mode uses sample products and an in-memor
 cart; nothing is sent to the API or saved, and the demo data is cleared when the
 app closes. Remove or set `LOCAL_DEMO=0` to use the connected API configuration.
 
+## Who builds what
+
+The remaining features and who owns each one: [docs/TEAM_PLAN.md](docs/TEAM_PLAN.md).
+
 ## For team members
 
 You do **not** need AWS access. You write code and tests; the project owner reviews,
